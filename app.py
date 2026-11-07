@@ -7,12 +7,13 @@ import hmac
 import secrets
 import time
 from PIL import Image
+from mysql.connector import Error as DatabaseError, errorcode
 from modules.database import ensure_schema, execute_query
 from modules.auth import check_dongle, verify_password, verify_face_biometric
 from modules.modern_cipher import aes_encrypt, aes_decrypt
 from modules.classic_cipher import extended_vigenere_encrypt, extended_vigenere_decrypt
-from modules.steganography import encode_image, decode_image
 from modules.blockchain import SimpleBlockchain
+from modules.exam_storage import ensure_tables, save_pdf, load_pdf, load_student_pdf, issue_token, verify_image, get_token_image, has_exam_access
 
 st.set_page_config(
     page_title="SPADA UPN - Secure Exam System",
@@ -22,6 +23,11 @@ st.set_page_config(
 )
 
 ensure_schema()
+try:
+    ensure_tables()
+except Exception as exc:
+    st.error(f"Penyimpanan PDF dan token belum siap: {exc}")
+    st.stop()
 blockchain = SimpleBlockchain()
 
 SESSION_PARAM = "exam_session"
@@ -81,6 +87,18 @@ def render_header(title, subtitle):
         <p>{subtitle}</p>
     </div>
     """, unsafe_allow_html=True)
+
+
+def open_exam(exam):
+    dec_aes = aes_decrypt(exam['encrypted_question'], b"KunciAES32BytesPanjangPasBanget!!")
+    questions = json.loads(extended_vigenere_decrypt(dec_aes, "KeyVigenereUPN2026"))
+    st.session_state.active_exam = {
+        "exam_info": exam, "questions": questions,
+        "answer_key": json.loads(exam['encrypted_answer_key'])
+    }
+    st.session_state.current_question_idx = 0
+    st.session_state.student_answers = {}
+    st.session_state.token_target_exam_id = None
 
 # ==================== LOGIN PAGE ====================
 if not st.session_state.logged_in:
@@ -190,13 +208,16 @@ with st.sidebar:
     }
     saved_page = st.query_params.get(MENU_PARAM, "dashboard")
     default_menu = menu_values.get(saved_page, menu_items[0])
-    menu = st.radio("", menu_items, index=menu_items.index(default_menu), key="main_menu", label_visibility="collapsed")
+    menu = st.radio("Menu utama", menu_items, index=menu_items.index(default_menu), key="main_menu", label_visibility="collapsed")
     st.query_params[MENU_PARAM] = next(key for key, value in menu_values.items() if value == menu)
     
     if menu == "🚪 Keluar":
         st.session_state.logged_in = False
         st.session_state.user = None
         st.session_state.active_exam = None
+        st.session_state.token_target_exam_id = None
+        st.session_state.editing_exam_id = None
+        st.session_state.student_answers = {}
         st.query_params.clear()
         st.rerun()
 
@@ -265,24 +286,37 @@ if menu == "🏠 Dashboard":
 
 # ==================== KELOLA UJIAN (PROCTOR) ====================
 elif menu == "📝 Kelola Ujian":
-    render_header("Kelola Ujian", "Buat dan kelola bank soal dengan super enkripsi (Vigenère + AES-256-GCM)")
+    is_edit = st.session_state.editing_exam_id is not None
+    render_header("Edit Soal" if is_edit else "Kelola Ujian", "Ubah soal ujian yang sudah tersimpan" if is_edit else "Buat dan kelola bank soal dengan super enkripsi (Vigenère + AES-256-GCM)")
+    if notice := st.session_state.pop("exam_saved_notice", None):
+        st.success(notice)
     
-    tab1, tab2 = st.tabs(["➕ Buat Ujian Baru", "📂 Daftar & Kelola Ujian"])
+    if is_edit:
+        tab1, tab2 = st.container(), st.container()
+    else:
+        tab1, tab2 = st.tabs(["➕ Buat Ujian Baru", "📂 Daftar & Kelola Ujian"], default=st.session_state.pop("exam_tab_default", "➕ Buat Ujian Baru"))
     
     with tab1:
         is_edit = st.session_state.editing_exam_id is not None
         
         defaults = {
-            "code": "KRIPTO-2026-A", "title": "Ujian Akhir Semester", "duration": 90, "token": "TOKEN-UPN-99",
+            "code": "KRIPTO-2026-A", "title": "Ujian Akhir Semester", "duration": 90,
             "questions": [{"question": "", "options": {"A": "", "B": "", "C": "", "D": ""}, "correct": "A"}]
         }
         
         if is_edit:
             exam = execute_query("SELECT * FROM exams WHERE id = %s", (st.session_state.editing_exam_id,), fetch=False)
+            if st.button("❌ Batal Edit"):
+                st.session_state.editing_exam_id = None
+                st.session_state.exam_tab_default = "📂 Daftar & Kelola Ujian"
+                st.rerun()
+            if not exam:
+                st.error("Ujian tidak dapat dimuat. Periksa koneksi database atau batalkan edit.")
+                st.stop()
             if exam:
                 st.warning(f"✏️ Mode Edit: **{exam['title']}**")
                 defaults.update({
-                    "code": exam['exam_code'], "title": exam['title'], "duration": exam['duration_minutes'], "token": exam['token_hash']
+                    "code": exam['exam_code'], "title": exam['title'], "duration": exam['duration_minutes']
                 })
                 try:
                     dec_aes = aes_decrypt(exam['encrypted_question'], b"KunciAES32BytesPanjangPasBanget!!")
@@ -290,12 +324,23 @@ elif menu == "📝 Kelola Ujian":
                     defaults["questions"] = json.loads(dec_vig)
                 except Exception as e:
                     st.error(f"Gagal dekripsi: {e}")
-                
-                if st.button("❌ Batal Edit"):
-                    st.session_state.editing_exam_id = None
-                    st.rerun()
+                    st.stop()
         
         question_count_key = f"question_count_{st.session_state.editing_exam_id or 'new'}"
+        form_context = (current_user['id'], st.session_state.editing_exam_id)
+        # Muat data tersimpan sekali saat berganti ujian; rerun jumlah soal menjaga draf.
+        if st.session_state.get("exam_form_context") != form_context:
+            st.session_state.exam_form_context = form_context
+            st.session_state[question_count_key] = len(defaults["questions"])
+            st.session_state.exam_form_code = defaults["code"]
+            st.session_state.exam_form_title = defaults["title"]
+            st.session_state.exam_form_duration = int(defaults["duration"])
+            for i in range(50):
+                q_old = defaults["questions"][i] if i < len(defaults["questions"]) else {}
+                st.session_state[f"q{i}"] = q_old.get("question", "")
+                for letter in "ABCD":
+                    st.session_state[f"{letter.lower()}{i}"] = q_old.get("options", {}).get(letter, "")
+                st.session_state[f"k{i}"] = q_old.get("correct", "A")
         st.markdown("### 📋 Informasi Dasar")
         if question_count_key not in st.session_state:
             st.session_state[question_count_key] = len(defaults["questions"])
@@ -303,27 +348,24 @@ elif menu == "📝 Kelola Ujian":
         with st.form("exam_form"):
             c1, c2 = st.columns(2)
             with c1:
-                code = st.text_input("Kode Ujian", value=defaults["code"])
-                title = st.text_input("Judul Ujian", value=defaults["title"])
+                code = st.text_input("Kode Ujian", key="exam_form_code")
+                title = st.text_input("Judul Ujian", key="exam_form_title")
             with c2:
-                dur = st.number_input("Durasi (menit)", value=int(defaults["duration"]), min_value=1)
-                token = st.text_input("Token Rahasia", value=defaults["token"])
+                dur = st.number_input("Durasi (menit)", key="exam_form_duration", min_value=1)
+                st.caption("Token gambar diterbitkan per mahasiswa melalui tab Daftar & Kelola Ujian.")
             
             st.markdown("### ✍️ Bank Soal")
             
             questions_data = []
             for i in range(int(num_q)):
-                q_old = defaults["questions"][i] if i < len(defaults["questions"]) else {}
                 with st.expander(f"Soal {i+1}", expanded=(i==0)):
-                    q_text = st.text_area("Pertanyaan", value=q_old.get("question", ""), key=f"q{i}", height=80)
+                    q_text = st.text_area("Pertanyaan", key=f"q{i}", height=80)
                     cols = st.columns(4)
-                    opt_a = cols[0].text_input("A", value=q_old.get("options", {}).get("A", ""), key=f"a{i}")
-                    opt_b = cols[1].text_input("B", value=q_old.get("options", {}).get("B", ""), key=f"b{i}")
-                    opt_c = cols[2].text_input("C", value=q_old.get("options", {}).get("C", ""), key=f"c{i}")
-                    opt_d = cols[3].text_input("D", value=q_old.get("options", {}).get("D", ""), key=f"d{i}")
-                    correct = st.selectbox("Kunci", ["A","B","C","D"], 
-                        index=["A","B","C","D"].index(q_old.get("correct", "A")) if q_old.get("correct") in ["A","B","C","D"] else 0,
-                        key=f"k{i}")
+                    opt_a = cols[0].text_input("A", key=f"a{i}")
+                    opt_b = cols[1].text_input("B", key=f"b{i}")
+                    opt_c = cols[2].text_input("C", key=f"c{i}")
+                    opt_d = cols[3].text_input("D", key=f"d{i}")
+                    correct = st.selectbox("Kunci", ["A","B","C","D"], key=f"k{i}")
                     
                 questions_data.append({
                     "question": q_text,
@@ -342,24 +384,39 @@ elif menu == "📝 Kelola Ujian":
                     super_enc = aes_encrypt(vig_enc, b"KunciAES32BytesPanjangPasBanget!!")
                     ans_key = json.dumps({i: q['correct'] for i, q in enumerate(questions_data)})
                     
+                    try:
+                        if is_edit:
+                            saved = execute_query("""
+                                UPDATE exams SET exam_code=%s, title=%s, encrypted_question=%s,
+                                encrypted_answer_key=%s, duration_minutes=%s WHERE id=%s
+                            """, (code, title, super_enc, ans_key, dur, st.session_state.editing_exam_id), raise_errors=True)
+                        else:
+                            saved = execute_query("""
+                                INSERT INTO exams (exam_code, title, encrypted_question, encrypted_answer_key, duration_minutes)
+                                VALUES (%s, %s, %s, %s, %s)
+                            """, (code, title, super_enc, ans_key, dur), raise_errors=True)
+                    except DatabaseError as exc:
+                        if exc.errno == errorcode.ER_DUP_ENTRY:
+                            st.error(f"Kode ujian '{code}' sudah digunakan. Gunakan kode lain untuk ujian baru, atau buka tab Daftar & Kelola Ujian untuk mengedit ujian yang sudah ada. Isian soalmu tetap tersedia di formulir ini.")
+                        else:
+                            st.error(f"Ujian belum tersimpan karena kesalahan database (kode {exc.errno}). Isian soalmu tetap tersedia; periksa pesan pada terminal aplikasi.")
+                        st.stop()
+                    if saved is None:
+                        st.error("Ujian belum tersimpan karena koneksi database gagal. Isian soalmu tetap tersedia; periksa MySQL lalu coba lagi.")
+                        st.stop()
                     if is_edit:
-                        execute_query("""
-                            UPDATE exams SET exam_code=%s, title=%s, encrypted_question=%s, 
-                            encrypted_answer_key=%s, duration_minutes=%s, token_hash=%s WHERE id=%s
-                        """, (code, title, super_enc, ans_key, dur, token, st.session_state.editing_exam_id))
                         blockchain.add_block({"event": "EDIT_EXAM", "exam_id": st.session_state.editing_exam_id, "exam_code": code, "editor": current_user['username']})
                         st.session_state.editing_exam_id = None
-                        st.success(f"✅ Ujian '{title}' berhasil diperbarui!")
+                        st.session_state.exam_tab_default = "📂 Daftar & Kelola Ujian"
+                        st.session_state.exam_saved_notice = f"✅ Ujian '{title}' berhasil diperbarui! Buka tab Daftar & Kelola Ujian untuk melanjutkan."
                     else:
-                        execute_query("""
-                            INSERT INTO exams (exam_code, title, encrypted_question, encrypted_answer_key, duration_minutes, token_hash)
-                            VALUES (%s, %s, %s, %s, %s, %s)
-                        """, (code, title, super_enc, ans_key, dur, token))
                         blockchain.add_block({"event": "CREATE_EXAM", "exam_code": code, "total_questions": len(questions_data), "creator": current_user['username']})
-                        st.success(f"🎉 Ujian '{title}' berhasil diterbitkan dengan {len(questions_data)} soal terenkripsi!")
-                        st.balloons()
+                        st.session_state.exam_saved_notice = f"✅ Ujian '{title}' ({code}) berhasil diterbitkan dengan {len(questions_data)} soal terenkripsi! Buka tab Daftar & Kelola Ujian untuk mengunggah PDF dan membuat token gambar."
                     st.rerun()
     
+    if is_edit:
+        st.stop()
+
     with tab2:
         st.markdown("### 📂 Daftar Ujian Terbit")
         exams = execute_query("SELECT * FROM exams ORDER BY id DESC", fetch=True) or []
@@ -372,12 +429,13 @@ elif menu == "📝 Kelola Ujian":
                 with cols[idx % 2]:
                     with st.container(border=True):
                         st.markdown(f"**{ex['title']}**")
-                        st.caption(f"Kode: {ex['exam_code']} · Durasi: {ex['duration_minutes']} menit · Token: {ex['token_hash']}")
+                        st.caption(f"Kode: {ex['exam_code']} · Durasi: {ex['duration_minutes']} menit")
                         
                         c1, c2 = st.columns(2)
                         with c1:
                             if st.button("✏️ Edit", key=f"edit_{ex['id']}", use_container_width=True):
                                 st.session_state.editing_exam_id = ex['id']
+                                st.session_state.pop("exam_form_context", None)
                                 st.rerun()
                         with c2:
                             if st.button("🗑️ Hapus", key=f"del_{ex['id']}", use_container_width=True):
@@ -387,23 +445,63 @@ elif menu == "📝 Kelola Ujian":
                                 st.rerun()
         
         st.markdown("---")
-        st.markdown("### 🖼️ Steganografi Token")
-        if st.button("Generate Gambar Stego Token"):
-            bg_path = "assets/default_exam_bg.jpg"
-            stego_path = "assets/stego_exam_token.png"
-            if os.path.exists(bg_path):
-                success, msg = encode_image(bg_path, "TOKEN-UPN-99", stego_path)
-                if success:
-                    st.success(f"{msg}")
-                    st.image(stego_path, width=400, caption="Poster dengan token tersembunyi (LSB)")
+        st.markdown("### 📄 PDF dan token gambar")
+        students = execute_query("SELECT id, username FROM users WHERE role='student' ORDER BY username", fetch=True) or []
+        if exams:
+            selected_exam = st.selectbox("Pilih ujian", exams, format_func=lambda e: f"{e['exam_code']} — {e['title']}")
+            st.caption("PDF disimpan terenkripsi. Token PNG dibuat khusus untuk setiap mahasiswa dan ujian.")
+            pdf_upload = st.file_uploader("Unggah soal PDF", type=["pdf"], key=f"pdf_{selected_exam['id']}", help="Maksimal 10 MB; ukuran yang dapat disimpan juga mengikuti max_allowed_packet MySQL.")
+            if st.button("Enkripsi dan simpan PDF"):
+                try:
+                    if pdf_upload is None:
+                        raise ValueError("Pilih file PDF terlebih dahulu.")
+                    ensure_tables()
+                    save_pdf(selected_exam['id'], pdf_upload.name, pdf_upload.getvalue())
+                    st.success("PDF terenkripsi dan tersimpan di database.")
+                    if not blockchain.add_block({"event": "UPLOAD_PDF", "exam_id": selected_exam['id'], "sha256": hashlib.sha256(pdf_upload.getvalue()).hexdigest()}):
+                        st.warning("PDF tersimpan, tetapi pencatatan blockchain gagal.")
+                except Exception as e:
+                    st.error(f"PDF belum tersimpan: {e}")
+            try:
+                saved_pdf = load_pdf(selected_exam['id'])
+                if saved_pdf:
+                    st.caption(f"PDF tersimpan: {saved_pdf[0]} · {len(saved_pdf[1]):,} byte")
+                    st.download_button("Unduh PDF tersimpan", saved_pdf[1], file_name=saved_pdf[0], mime="application/pdf", key=f"preview_pdf_{selected_exam['id']}")
                 else:
-                    st.error(msg)
+                    st.info("Belum ada PDF untuk ujian ini.")
+            except Exception as e:
+                st.error(f"PDF tersimpan tidak dapat dibaca: {e}")
+            if students:
+                student = st.selectbox("Pilih mahasiswa", students, format_func=lambda u: u['username'])
+                cover = st.file_uploader("Pilih gambar untuk token", type=["png", "jpg", "jpeg"], key=f"cover_{selected_exam['id']}_{student['id']}")
+                hours = st.number_input("Masa berlaku token (jam)", min_value=1, max_value=720, value=24)
+                if st.button("Buat token gambar"):
+                    try:
+                        if cover is None:
+                            raise ValueError("Pilih gambar terlebih dahulu.")
+                        ensure_tables()
+                        issue_token(selected_exam['id'], student['id'], int(time.time()) + int(hours)*3600, cover.getvalue())
+                        st.success("Token gambar dibuat dan tersimpan di database.")
+                        if not blockchain.add_block({"event": "ISSUE_IMAGE_TOKEN", "exam_id": selected_exam['id'], "student_id": student['id']}):
+                            st.warning("Token tersimpan, tetapi pencatatan blockchain gagal.")
+                    except Exception as e:
+                        st.error(f"Token belum dibuat: {e}")
+                try:
+                    ensure_tables()
+                    saved_image = get_token_image(selected_exam['id'], student['id'])
+                    if saved_image:
+                        st.download_button("Unduh token PNG", saved_image, file_name=f"token_{selected_exam['id']}_{student['id']}.png", mime="image/png")
+                        st.caption("Kirim PNG asli kepada mahasiswa yang dipilih. Token baru membatalkan token sebelumnya; jangan ubah ukuran atau kompres gambarnya.")
+                except Exception as e:
+                    st.error(f"Token tidak dapat dibaca: {e}")
             else:
-                st.warning("File background tidak ditemukan.")
+                st.info("Belum ada akun mahasiswa.")
+        else:
+            st.info("Buat ujian melalui tab Buat Ujian Baru terlebih dahulu.")
 
 # ==================== UJIAN SAYA (STUDENT) ====================
 elif menu == "📝 Ujian Saya":
-    render_header("Ujian Saya", "Masukkan token dari dosen untuk memulai ujian")
+    render_header("Ujian Saya", "Unggah token gambar dari dosen untuk membuka soal dan PDF ujian")
     
     if not st.session_state.active_exam:
         exams = execute_query("SELECT * FROM exams ORDER BY id DESC", fetch=True) or []
@@ -423,41 +521,55 @@ elif menu == "📝 Ujian Saya":
                         if sub:
                             st.success(f"✅ Selesai · Nilai: {sub['score']}")
                         else:
-                            if st.session_state.token_target_exam_id != ex['id']:
+                            if has_exam_access(ex['id'], current_user['id']):
+                                st.caption("Token sudah diverifikasi. Akses berlaku sampai token kedaluwarsa atau diganti dosen.")
+                                if st.button("Lanjutkan ujian", key=f"resume_{ex['id']}"):
+                                    try:
+                                        open_exam(ex)
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Soal tidak dapat dibuka: {e}")
+                            elif st.session_state.token_target_exam_id != ex['id']:
                                 if st.button("🎯 Mulai Ujian", key=f"start_{ex['id']}", use_container_width=True):
                                     st.session_state.token_target_exam_id = ex['id']
                                     st.rerun()
+
                             else:
                                 st.markdown("---")
-                                tok = st.text_input("Masukkan Token", key=f"tok_{ex['id']}", placeholder="Token dari dosen...")
+                                token_image = st.file_uploader("Unggah token gambar PNG dari dosen", type=['png'], key=f"image_{ex['id']}")
                                 c1, c2 = st.columns(2)
                                 if c1.button("Verifikasi & Mulai", key=f"verify_{ex['id']}", type="primary"):
-                                    if tok.strip() == ex['token_hash']:
+                                    try:
+                                        ensure_tables()
+                                        token_ok = token_image is not None and verify_image(ex['id'], current_user['id'], token_image.getvalue())
+                                    except Exception as e:
+                                        token_ok = False
+                                        st.error(f"Token tidak dapat diperiksa: {e}")
+                                    if token_ok:
                                         try:
-                                            dec_aes = aes_decrypt(ex['encrypted_question'], b"KunciAES32BytesPanjangPasBanget!!")
-                                            dec_vig = extended_vigenere_decrypt(dec_aes, "KeyVigenereUPN2026")
-                                            questions = json.loads(dec_vig)
-                                            
-                                            st.session_state.active_exam = {
-                                                "exam_info": ex,
-                                                "questions": questions,
-                                                "answer_key": json.loads(ex['encrypted_answer_key'])
-                                            }
-                                            st.session_state.current_question_idx = 0
-                                            st.session_state.student_answers = {}
-                                            st.session_state.token_target_exam_id = None
+                                            open_exam(ex)
                                             st.success("Token valid! Memuat soal...")
                                             st.rerun()
                                         except Exception as e:
                                             st.error(f"Error dekripsi: {e}")
                                     else:
-                                        st.error("Token salah!")
+                                        st.error("Token gambar tidak valid, kedaluwarsa, atau bukan untuk akun ini.")
                                 if c2.button("Batal", key=f"cancel_{ex['id']}"):
                                     st.session_state.token_target_exam_id = None
                                     st.rerun()
     else:
         active = st.session_state.active_exam
         ex_info = active["exam_info"]
+        if not has_exam_access(ex_info['id'], current_user['id']):
+            st.session_state.active_exam = None
+            st.warning("Akses token berakhir atau token diganti dosen. Kembali ke daftar dan unggah token yang berlaku.")
+            st.stop()
+        try:
+            pdf = load_student_pdf(ex_info['id'], current_user['id'])
+            if pdf:
+                st.download_button("Unduh soal PDF", pdf[1], file_name=pdf[0], mime="application/pdf")
+        except Exception as e:
+            st.error(f"PDF tidak dapat dibuka: {e}")
         questions = active["questions"]
         q_idx = st.session_state.current_question_idx
         
@@ -586,7 +698,7 @@ elif menu == "👤 Profil":
             for ex in exams:
                 with st.container(border=True):
                     st.markdown(f"**{ex['title']}**")
-                    st.caption(f"Kode: {ex['exam_code']} · Durasi: {ex['duration_minutes']} menit · Token: {ex['token_hash']}")
+                    st.caption(f"Kode: {ex['exam_code']} · Durasi: {ex['duration_minutes']} menit")
         else:
             st.info("Belum ada ujian yang dibuat")
     

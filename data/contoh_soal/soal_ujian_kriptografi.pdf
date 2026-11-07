@@ -1,0 +1,92 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 7 0 R /F2 8 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 2654 >>
+stream
+BT /F2 15 Tf 50 792 Td (UJIAN AKHIR SEMESTER - KRIPTOGRAFI) Tj ET
+BT /F1 11 Tf 50 768 Td (Universitas Pembangunan Nasional "Veteran" Yogyakarta) Tj ET
+BT /F1 10 Tf 50 746 Td (Mata Kuliah: Kriptografi | Sifat: Tutup buku | Waktu: 90 menit) Tj ET
+BT /F1 10 Tf 50 729 Td (Kode Ujian: KRIPTO-2026-A) Tj ET
+BT /F2 11 Tf 50 702 Td (PETUNJUK PENGERJAAN) Tj ET
+BT /F1 10 Tf 50 682 Td (1. Soal ini hanya dapat dibuka setelah token gambar diverifikasi oleh sistem.) Tj ET
+BT /F1 10 Tf 50 667 Td (2. Pilih satu jawaban yang paling tepat pada setiap nomor.) Tj ET
+BT /F1 10 Tf 50 652 Td (3. Jawaban dikumpulkan melalui menu Ujian Saya di aplikasi.) Tj ET
+BT /F2 12 Tf 50 625 Td (A. PILIHAN GANDA) Tj ET
+BT /F2 10 Tf 50 602 Td (1. Algoritma kriptografi modern yang dipakai untuk mengenkripsi file PDF pada aplikasi ini adalah...) Tj ET
+BT /F1 10 Tf 50 585 Td (A. ChaCha20-Poly1305) Tj ET
+BT /F1 10 Tf 50 570 Td (B. Caesar Cipher) Tj ET
+BT /F1 10 Tf 50 555 Td (C. Vigenere Cipher) Tj ET
+BT /F1 10 Tf 50 540 Td (D. Least Significant Bit) Tj ET
+BT /F1 10 Tf 50 525 Td () Tj ET
+BT /F2 10 Tf 50 504 Td (2. Teknik yang dipakai untuk menyembunyikan token ujian di dalam gambar PNG adalah...) Tj ET
+BT /F1 10 Tf 50 487 Td (A. Steganografi LSB) Tj ET
+BT /F1 10 Tf 50 472 Td (B. Base64 encoding) Tj ET
+BT /F1 10 Tf 50 457 Td (C. Hashing SHA-256) Tj ET
+BT /F1 10 Tf 50 442 Td (D. Kompresi ZIP) Tj ET
+BT /F1 10 Tf 50 427 Td () Tj ET
+BT /F2 10 Tf 50 406 Td (3. Sebelum dienkripsi dengan AES-256-GCM, payload token ujian diacak lebih dulu memakai cipher) Tj ET
+BT /F2 10 Tf 50 391 Td (klasik...) Tj ET
+BT /F1 10 Tf 50 374 Td (A. Vigenere) Tj ET
+BT /F1 10 Tf 50 359 Td (B. Rail Fence) Tj ET
+BT /F1 10 Tf 50 344 Td (C. Playfair) Tj ET
+BT /F1 10 Tf 50 329 Td (D. Enigma) Tj ET
+BT /F1 10 Tf 50 314 Td () Tj ET
+BT /F2 10 Tf 50 293 Td (4. Fungsi yang dipakai untuk menyimpan password pengguna dalam bentuk hash adalah...) Tj ET
+BT /F1 10 Tf 50 276 Td (A. PBKDF2-SHA256) Tj ET
+BT /F1 10 Tf 50 261 Td (B. MD5 tanpa salt) Tj ET
+BT /F1 10 Tf 50 246 Td (C. Base64) Tj ET
+BT /F1 10 Tf 50 231 Td (D. ROT13) Tj ET
+BT /F1 10 Tf 50 216 Td () Tj ET
+BT /F2 10 Tf 50 195 Td (5. Teknologi yang menjaga integritas riwayat nilai dan aktivitas ujian adalah...) Tj ET
+BT /F1 10 Tf 50 178 Td (A. Blockchain dengan hash SHA-256) Tj ET
+BT /F1 10 Tf 50 163 Td (B. Cookie browser) Tj ET
+BT /F1 10 Tf 50 148 Td (C. Session Storage) Tj ET
+BT /F1 10 Tf 50 133 Td (D. Cache server) Tj ET
+BT /F1 10 Tf 50 118 Td () Tj ET
+BT /F2 12 Tf 50 97 Td (B. KETENTUAN PENILAIAN) Tj ET
+BT /F1 10 Tf 50 74 Td (Setiap jawaban benar bernilai 20 poin. Total nilai maksimal 100.) Tj ET
+BT /F1 8 Tf 280 40 Td (Halaman 1 dari 2) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 7 0 R /F2 8 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 247 >>
+stream
+BT /F1 10 Tf 50 792 Td (Nilai dihitung otomatis saat jawaban dikumpulkan melalui aplikasi.) Tj ET
+BT /F1 9 Tf 50 767 Td (-- Akhir berkas soal. Dokumen ini dienkripsi saat diunggah ke sistem. --) Tj ET
+BT /F1 8 Tf 280 40 Td (Halaman 2 dari 2) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+8 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000127 00000 n 
+0000000263 00000 n 
+0000002969 00000 n 
+0000003105 00000 n 
+0000003403 00000 n 
+0000003500 00000 n 
+trailer
+<< /Size 9 /Root 1 0 R >>
+startxref
+3602
+%%EOF

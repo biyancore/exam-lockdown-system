@@ -1,0 +1,46 @@
+Kode Ujian : KRIPTO-2026-A
+Judul      : Ujian Akhir Semester Kriptografi
+Durasi     : 90 menit
+
+Masukkan lima soal di bawah ke bank soal aplikasi. Pilihan A adalah kunci jawaban
+yang benar pada semua soal ini.
+
+SOAL 1
+Pertanyaan: Algoritma kriptografi modern yang dipakai untuk mengenkripsi file PDF pada aplikasi ini adalah...
+A: ChaCha20-Poly1305
+B: Caesar Cipher
+C: Vigenere Cipher
+D: Least Significant Bit
+Kunci: A
+
+SOAL 2
+Pertanyaan: Teknik yang dipakai untuk menyembunyikan token ujian di dalam gambar PNG adalah...
+A: Steganografi LSB
+B: Base64 encoding
+C: Hashing SHA-256
+D: Kompresi ZIP
+Kunci: A
+
+SOAL 3
+Pertanyaan: Sebelum dienkripsi dengan AES-256-GCM, payload token ujian diacak lebih dulu memakai cipher klasik...
+A: Vigenere
+B: Rail Fence
+C: Playfair
+D: Enigma
+Kunci: A
+
+SOAL 4
+Pertanyaan: Fungsi yang dipakai untuk menyimpan password pengguna dalam bentuk hash adalah...
+A: PBKDF2-SHA256
+B: MD5 tanpa salt
+C: Base64
+D: ROT13
+Kunci: A
+
+SOAL 5
+Pertanyaan: Teknologi yang menjaga integritas riwayat nilai dan aktivitas ujian adalah...
+A: Blockchain dengan hash SHA-256
+B: Cookie browser
+C: Session Storage
+D: Cache server
+Kunci: A

@@ -1,4 +1,5 @@
 import mysql.connector
+import os
 from mysql.connector import Error
 
 def get_db_connection():
@@ -6,7 +7,7 @@ def get_db_connection():
     try:
         connection = mysql.connector.connect(
             host='localhost',
-            database='secure_exam_db',
+            database=os.environ.get('SECURE_EXAM_DB', 'secure_exam_db'),
             user='root',
             password=''  # Default XAMPP kosong
         )
@@ -16,7 +17,7 @@ def get_db_connection():
         print(f"Gagal terhubung ke MySQL: {e}")
         return None
 
-def execute_query(query, params=None, fetch=False):
+def execute_query(query, params=None, fetch=False, *, raise_errors=False):
     """Fungsi pembantu untuk menjalankan query INSERT, UPDATE, DELETE, atau SELECT"""
     connection = get_db_connection()
     if connection is None:
@@ -36,6 +37,8 @@ def execute_query(query, params=None, fetch=False):
             result = cursor.rowcount
     except Error as e:
         print(f"Error eksekusi query: {e}")
+        if raise_errors:
+            raise
     finally:
         cursor.close()
         connection.close()

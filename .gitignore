@@ -1,0 +1,6 @@
+config/exam_data.key
+config/session.key
+__pycache__/
+*.pyc
+*.backup
+data/browser_test/
