@@ -1,0 +1,6 @@
+streamlit>=1.37
+mysql-connector-python
+cryptography>=41
+opencv-python>=4.8,<5
+numpy
+pillow

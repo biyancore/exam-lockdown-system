@@ -157,58 +157,67 @@ code {
     background: linear-gradient(180deg, #1a7f5a 0%, #145c42 100%) !important;
 }
 
-.sidebar-brand {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 20px 16px;
-    margin-bottom: 20px;
-    border-bottom: 1px solid rgba(255,255,255,0.1);
+/* ==========================================================================
+   SIDEBAR - CARD BENING SERAGAM (SEJAJAR & UKURAN SAMA)
+   ========================================================================== */
+
+/* Padding kiri-kanan sidebar dibuat satu sumber, jadi semua card sejajar */
+[data-testid="stSidebarUserContent"],
+[data-testid="stSidebar"] [data-testid="stSidebarContent"] > div {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
 }
 
-.sidebar-brand .brand-icon {
-    width: 40px;
-    height: 40px;
-    background: rgba(255,255,255,0.2);
-    border-radius: 12px;
+/* Gaya dasar card: dipakai brand, user-card, dan item menu */
+.sidebar-brand,
+.user-card,
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label {
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-height: 56px !important;
+    margin: 0 0 10px 0 !important;
+    padding: 0 16px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    background: rgba(255, 255, 255, 0.12) !important;
+    border: 1px solid rgba(255, 255, 255, 0.18) !important;
+    border-radius: 12px !important;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: all 0.2s ease !important;
+}
+
+/* Brand: hilangkan garis bawah lama, jadi card biasa */
+.sidebar-brand {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.18) !important;
+}
+
+.sidebar-brand .brand-icon,
+.user-card .user-avatar {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    background: rgba(255, 255, 255, 0.2);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 20px;
+    font-size: 18px;
 }
+.sidebar-brand .brand-icon { border-radius: 10px; }
+.user-card .user-avatar    { border-radius: 50%; }
 
 .sidebar-brand .brand-text h3 {
     color: white !important;
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 700;
     margin: 0;
+    line-height: 1.2;
 }
-
 .sidebar-brand .brand-text p {
-    color: rgba(255,255,255,0.7) !important;
+    color: rgba(255, 255, 255, 0.7) !important;
     font-size: 12px;
     margin: 2px 0 0 0;
-}
-
-.user-card {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 16px;
-    background: rgba(255,255,255,0.1);
-    border-radius: 12px;
-    margin-bottom: 24px;
-}
-
-.user-card .user-avatar {
-    width: 40px;
-    height: 40px;
-    background: rgba(255,255,255,0.2);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
 }
 
 .user-card .user-name {
@@ -216,23 +225,62 @@ code {
     font-weight: 600;
     font-size: 14px;
     margin: 0;
+    line-height: 1.2;
 }
-
 .user-card .user-role {
-    color: rgba(255,255,255,0.7) !important;
+    color: rgba(255, 255, 255, 0.7) !important;
     font-size: 12px;
     margin: 2px 0 0 0;
     text-transform: uppercase;
 }
 
 .menu-label {
-    color: rgba(255,255,255,0.5) !important;
+    color: rgba(255, 255, 255, 0.55) !important;
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.8px;
-    padding: 0 16px;
-    margin-bottom: 8px;
+    padding: 0 4px;
+    margin: 18px 0 10px 0;
+}
+
+/* ---------- Menu radio: hilangkan bulatan, jadi card teks ---------- */
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] {
+    gap: 0 !important;
+    width: 100% !important;
+}
+
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label > div:first-child {
+    display: none !important;
+}
+
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label > div:last-child {
+    width: 100% !important;
+    margin: 0 !important;
+}
+
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label p {
+    margin: 0 !important;
+    color: white !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+}
+
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label:hover {
+    background: rgba(255, 255, 255, 0.22) !important;
+}
+
+/* Menu aktif: putih, ukuran tetap sama dengan card lain */
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label:has(input:checked),
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label[aria-checked="true"] {
+    background: white !important;
+    border-color: white !important;
+}
+
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label:has(input:checked) *,
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label[aria-checked="true"] * {
+    color: #1a7f5a !important;
+    font-weight: 600 !important;
 }
 
 /* ==========================================================================
@@ -394,20 +442,56 @@ div[data-testid="stVerticalBlockBorderWrapper"] > div {
 }
 
 /* ==========================================================================
-   HIDE STREAMLIT BRANDING & HEADER BUTTONS
+   HIDE STREAMLIT BRANDING (SIDEBAR TOGGLE TETAP MUNCUL)
    ========================================================================== */
 #MainMenu,
 footer,
-header,
-[data-testid="stHeader"],
-[data-testid="stToolbar"],
 [data-testid="stDecoration"],
 [data-testid="stStatusWidget"],
-button[data-testid="stBaseButton-header"],
-button[data-testid="stMainMenuButton"],
-[data-testid="stHeaderActionElements"] {
+[data-testid="stMainMenu"],
+[data-testid="stAppDeployButton"],
+.stAppDeployButton,
+[data-testid="stToolbarActions"] {
     display: none !important;
     visibility: hidden !important;
+}
+
+/* Header dibuat transparan, tidak dihapus, supaya tombol sidebar tetap ada */
+header[data-testid="stHeader"] {
+    background: transparent !important;
+    height: 3rem !important;
+}
+
+/* Tombol untuk MEMBUKA sidebar saat sedang tertutup */
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="collapsedControl"],
+[data-testid="stExpandSidebarButton"] {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    z-index: 999991 !important;
+}
+
+[data-testid="stSidebarCollapsedControl"] button,
+[data-testid="collapsedControl"] button,
+[data-testid="stExpandSidebarButton"] {
+    background: #1a7f5a !important;
+    color: white !important;
+    border-radius: 8px !important;
+}
+
+[data-testid="stSidebarCollapsedControl"] svg,
+[data-testid="collapsedControl"] svg,
+[data-testid="stExpandSidebarButton"] svg {
+    color: white !important;
+    fill: white !important;
+}
+
+/* Tombol untuk MENUTUP sidebar (di dalam sidebar hijau) */
+[data-testid="stSidebarCollapseButton"] button,
+[data-testid="stSidebarCollapseButton"] svg {
+    color: white !important;
+    fill: white !important;
 }
 
 /* ==========================================================================
