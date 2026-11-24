@@ -1,7 +1,7 @@
 """Halaman Profil + pendaftaran biometrik wajah."""
 import streamlit as st
 
-from modules import biometric
+from modules import biometric, session
 from modules.auth import verify_password
 from modules.database import execute_query
 from modules.integrity import check_asset, record
@@ -78,46 +78,70 @@ def render(current_user, blockchain, dongle_msg):
         st.markdown("**Aset penting:** sidik jari SHA-256 tercatat di blockchain")
 
 
+def _upgrade_session_after_enroll(user):
+    """Wajah baru saja diambil langsung dari kamera -> token sesi dinaikkan ke level 'face',
+    supaya refresh halaman tidak meminta verifikasi wajah lagi."""
+    if st.session_state.get("auth_amr") != session.AMR_FACE:
+        st.session_state.auth_amr = session.AMR_FACE
+        st.query_params[session.SESSION_PARAM] = session.issue_token(user, session.AMR_FACE)
+
+
 def render_biometric(user, blockchain):
     st.markdown("### 🧬 Biometrik Wajah")
-    count = biometric.template_count(user["id"])
-    enrolled = count >= biometric.MIN_TEMPLATES
+    state, count, detail = biometric.status(user["id"])
     with st.container(border=True):
-        if enrolled:
+        if state == "active":
             st.success(f"✅ Biometrik aktif — {count} foto referensi tersimpan (terenkripsi AES-256-GCM). "
                        f"Login Anda kini mewajibkan verifikasi wajah.")
-        elif count:
-            st.warning(f"Baru {count} dari minimal {biometric.MIN_TEMPLATES} foto referensi. Ambil 1 foto lagi.")
+        elif state == "partial":
+            st.warning(f"Baru {count} dari minimal {biometric.MIN_TEMPLATES} foto referensi. "
+                       f"Ambil {biometric.MIN_TEMPLATES - count} foto lagi.")
+        elif state == "corrupt":
+            st.error(f"⚠️ {detail} Login sementara hanya memakai password. Hapus data biometrik di bawah "
+                     f"lalu daftarkan ulang wajah Anda.")
         else:
             st.warning(f"Biometrik belum didaftarkan. Ambil minimal {biometric.MIN_TEMPLATES} foto wajah "
                        f"(pencahayaan cukup, wajah menghadap kamera). Setelah aktif, login wajib verifikasi wajah.")
-        nonce = st.session_state.get("bio_nonce", 0)
-        mode = st.radio("Aksi", ["Tambah foto referensi", "Uji verifikasi wajah"] if count else ["Tambah foto referensi"],
-                        horizontal=True, key="bio_mode")
-        shot = st.camera_input("Ambil foto wajah", key=f"bio_cam_{nonce}")
-        if shot is not None:
-            face, note, annotated = biometric.detect_face(shot.getvalue())
-            st.image(annotated, caption=note, width=280)
-            if mode == "Tambah foto referensi":
-                if face is not None and st.button("💾 Simpan sebagai foto referensi", type="primary"):
-                    ok, msg = biometric.add_reference(user["id"], shot.getvalue())
-                    if ok:
-                        record(blockchain, "BIOMETRIC_ENROLL", "biometric", user["id"], user=user["username"])
-                        st.session_state.bio_nonce = nonce + 1
-                        flash(msg)
-                        st.rerun()
-                    st.error(msg)
-            elif face is not None:
-                ok, score, thr, msg = biometric.verify(user["id"], shot.getvalue())
-                (st.success if ok else st.error)(msg)
-                st.progress(min(1.0, score), text=f"Skor kemiripan {score:.3f} (ambang {thr:.3f})")
-        if count:
-            with st.expander("🗑️ Hapus data biometrik"):
-                pw = st.text_input("Konfirmasi password", type="password", key="bio_del_pw")
+
+        if state != "corrupt":
+            nonce = st.session_state.get("bio_nonce", 0)
+            modes = ["Tambah foto referensi", "Uji verifikasi wajah"] if state == "active" else ["Tambah foto referensi"]
+            # key ikut berubah saat status berubah, agar pilihan lama yang sudah tidak tersedia tidak tersangkut
+            mode = st.radio("Aksi", modes, horizontal=True, key=f"bio_mode_{state}")
+            st.caption("Tips: wajah menghadap lurus ke kamera, tanpa masker/kacamata gelap, cahaya dari depan. "
+                       "Ambil foto referensi dengan sedikit variasi (jarak/cahaya) agar login lebih andal.")
+            shot = st.camera_input("Ambil foto wajah", key=f"bio_cam_{nonce}")
+            if shot is not None:
+                face, note, annotated = biometric.detect_face(shot.getvalue())
+                if annotated is not None:
+                    st.image(annotated, caption=note, width=280)
+                if face is None:
+                    st.error(note)
+                elif mode == "Tambah foto referensi":
+                    if st.button("💾 Simpan sebagai foto referensi", type="primary"):
+                        ok, msg = biometric.add_reference(user["id"], shot.getvalue())
+                        if ok:
+                            record(blockchain, "BIOMETRIC_ENROLL", "biometric", user["id"], user=user["username"])
+                            if biometric.is_enrolled(user["id"]):
+                                _upgrade_session_after_enroll(user)
+                            st.session_state.bio_nonce = nonce + 1
+                            flash(msg)
+                            st.rerun()
+                        st.error(msg)
+                else:
+                    ok, score, thr, msg = biometric.verify(user["id"], shot.getvalue())
+                    (st.success if ok else st.error)(msg)
+                    st.progress(max(0.0, min(1.0, score)), text=f"Skor kemiripan {score:.3f} (ambang {thr:.3f})")
+
+        if state != "none":
+            with st.expander("🗑️ Hapus data biometrik", expanded=state == "corrupt"):
+                pw = st.text_input("Konfirmasi password", type="password", key="bio_del_pw",
+                                   autocomplete="new-password")
                 if st.button("Hapus biometrik saya"):
                     row = execute_query("SELECT password_hash FROM users WHERE id=%s", (user["id"],))
                     if row and verify_password(row["password_hash"], pw):
                         biometric.clear(user["id"])
+                        session.reset_face_failures(user["id"])
                         blockchain.add_block({"event": "BIOMETRIC_DELETE", "asset": f"biometric:{user['id']}",
                                               "asset_hash": None, "user": user["username"]})
                         flash("🗑️ Data biometrik dihapus.")

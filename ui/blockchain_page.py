@@ -63,7 +63,8 @@ def render(current_user, blockchain):
                 with st.container(border=True):
                     a, b = st.columns([3, 1])
                     a.markdown(f"**{r['label']}** · `{r['key']}`")
-                    a.caption(f"Hash saat ini: `{r['current'][:32]}…`" +
+                    current_txt = f"`{r['current'][:32]}…`" if r["current"] else "**(data tidak ada di database)**"
+                    a.caption(f"Hash saat ini: {current_txt}" +
                               (f" · tercatat di blok #{r['block']} ({r['event']})" if r["block"] is not None else ""))
                     if r["status"] == "tampered":
                         a.error(f"Hash di blockchain `{(r['recorded'] or '')[:32]}…` ≠ hash database. "

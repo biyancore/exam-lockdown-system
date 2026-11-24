@@ -7,7 +7,8 @@ def seed_users():
     
     users = [
         ("dosen_kripto", hashed_pwd, None, "proctor"),
-        ("biyan_mahasiswa", hashed_pwd, None, "student")
+        ("biyan_mahasiswa", hashed_pwd, None, "student"),
+        ("andini_mahasiswa", hashed_pwd, None, "student")
     ]
     
     for username, pwd_hash, bio_path, role in users:

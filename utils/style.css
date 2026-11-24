@@ -526,3 +526,72 @@ header[data-testid="stHeader"] {
     background: #dcfce7 !important;
     border-color: #1a7f5a !important;
 }
+
+/* ==========================================================================
+   KOMPATIBILITAS STREAMLIT BARU (struktur radio: label[data-testid="stRadioOption"])
+   Streamlit versi baru membungkus tiap opsi radio dengan <div> tambahan, sehingga selector
+   "radiogroup > label" di atas tidak lagi cocok dan bulatan radio muncul kembali di sidebar.
+   Aturan di bawah menerapkan tampilan yang SAMA untuk struktur baru.
+   ========================================================================== */
+[data-testid="stSidebar"] .stRadio label[data-testid="stRadioOption"] {
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-height: 56px !important;
+    margin: 0 0 10px 0 !important;
+    padding: 0 16px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    background: rgba(255, 255, 255, 0.12) !important;
+    border: 1px solid rgba(255, 255, 255, 0.18) !important;
+    border-radius: 12px !important;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: all 0.2s ease !important;
+    cursor: pointer;
+}
+
+/* Sembunyikan bulatan radio */
+[data-testid="stSidebar"] .stRadio label[data-testid="stRadioOption"] > div > div:first-child:not([data-testid]) {
+    display: none !important;
+}
+
+/* Semua kartu menu selebar menu terpanjang (sama seperti struktur lama) */
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > div {
+    width: 100% !important;
+}
+
+[data-testid="stSidebar"] .stRadio label[data-testid="stRadioOption"] > div {
+    width: 100% !important;
+    margin: 0 !important;
+    padding-top: 2px !important;  /* posisi vertikal teks sama dengan struktur lama */
+}
+
+/* Jarak teks dari tepi kiri kartu (struktur lama punya padding-left 8px di sini) */
+[data-testid="stSidebar"] .stRadio label[data-testid="stRadioOption"] [data-testid="stMarkdownContainer"] {
+    padding-left: 8px !important;
+}
+
+[data-testid="stSidebar"] .stRadio label[data-testid="stRadioOption"] p {
+    margin: 0 !important;
+    color: white !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+}
+
+[data-testid="stSidebar"] .stRadio label[data-testid="stRadioOption"]:hover {
+    background: rgba(255, 255, 255, 0.22) !important;
+}
+
+/* Menu aktif: putih, teks hijau */
+[data-testid="stSidebar"] .stRadio label[data-testid="stRadioOption"]:has(input:checked),
+[data-testid="stSidebar"] .stRadio label[data-testid="stRadioOption"][data-selected="true"] {
+    background: white !important;
+    border-color: white !important;
+}
+
+[data-testid="stSidebar"] .stRadio label[data-testid="stRadioOption"]:has(input:checked) *,
+[data-testid="stSidebar"] .stRadio label[data-testid="stRadioOption"][data-selected="true"] * {
+    color: #1a7f5a !important;
+    font-weight: 600 !important;
+}

@@ -4,11 +4,9 @@ import os
 
 import streamlit as st
 
-from modules import biometric
+from modules import biometric, session
 from modules.auth import verify_password
 from modules.database import execute_query
-
-MAX_FACE_ATTEMPTS = 3
 
 
 def _hero():
@@ -53,13 +51,24 @@ def render(blockchain, on_success):
         """, unsafe_allow_html=True)
 
 
+def start_face_step(user, blockchain):
+    """Pindah ke langkah 2. False (dengan pesan error) jika akun sedang terkunci."""
+    wait = session.face_lock_remaining(user["id"])
+    if wait:
+        st.session_state.login_error = (f"🔒 Verifikasi wajah akun **{user['username']}** dikunci karena gagal "
+                                        f"{session.FACE_MAX_ATTEMPTS} kali. Coba lagi dalam {session.fmt_wait(wait)}.")
+        return False
+    st.session_state.pending_2fa_user = session.public_user(user)
+    return True
+
+
 def _password_step(blockchain, on_success):
     if st.session_state.get("login_error"):
         st.error(st.session_state.pop("login_error"))
     with st.form("login_form", clear_on_submit=False):
         st.text_input("Username / NIM", placeholder="Masukkan NIM atau username", key="login_username")
         st.text_input("Password", type="password", placeholder="Masukkan password", key="login_password")
-        submit = st.form_submit_button("MASUK KE PORTAL", use_container_width=True)
+        submit = st.form_submit_button("MASUK KE PORTAL", width="stretch")
     if not submit:
         return
     username = st.session_state.login_username.strip()
@@ -71,35 +80,68 @@ def _password_step(blockchain, on_success):
     if not (user and verify_password(user["password_hash"], password)):
         st.error("Username atau password salah!")
         return
-    if biometric.is_enrolled(user["id"]):
-        st.session_state.pending_2fa_user = user
-        st.session_state.face_attempts = 0
+
+    state, _, detail = biometric.status(user["id"])
+    if state == "active":
+        start_face_step(user, blockchain)
         st.rerun()
+    if state == "corrupt":
+        # Template tidak bisa dibuka: setara dengan belum terdaftar (menghapus template lewat database
+        # juga berefek sama), tetapi dicatat di blockchain & ditandai di menu Integritas Aset.
+        blockchain.add_block({"event": "BIOMETRIC_TEMPLATE_UNREADABLE", "user": user["username"], "detail": detail})
     blockchain.add_block({"event": "LOGIN", "user": user["username"], "method": "password"})
-    on_success(user, biometric_ok=False)
+    on_success(user, session.AMR_PASSWORD)
 
 
-def _face_step(user, blockchain, on_success):
-    st.markdown(f"#### 🧬 Langkah 2 — Verifikasi Wajah\nHalo **{user['username']}**, password benar. "
+def _face_step(pending, blockchain, on_success):
+    user_id = pending["id"]
+    st.markdown(f"#### 🧬 Langkah 2 — Verifikasi Wajah\nHalo **{pending['username']}**, password benar. "
                 f"Hadapkan wajah ke kamera lalu ambil foto.")
-    attempts = st.session_state.get("face_attempts", 0)
-    shot = st.camera_input("Verifikasi wajah", key=f"login_cam_{attempts}", label_visibility="collapsed")
+    st.caption("Kamera hanya bisa dipakai jika aplikasi dibuka lewat http://localhost atau HTTPS, "
+               "dan izin kamera di browser diberikan.")
+
+    wait = session.face_lock_remaining(user_id)
+    if wait:
+        st.session_state.pop("pending_2fa_user", None)
+        st.session_state.login_error = f"🔒 Verifikasi wajah dikunci. Coba lagi dalam {session.fmt_wait(wait)}."
+        st.rerun()
+
+    attempts = session.face_attempts(user_id)
+    retry = st.session_state.get("face_retry", 0)
+    shot = st.camera_input("Verifikasi wajah", key=f"login_cam_{user_id}_{attempts}_{retry}",
+                           label_visibility="collapsed")
     if shot is not None:
-        ok, score, thr, msg = biometric.verify(user["id"], shot.getvalue())
+        ok, score, thr, msg, reason = biometric.verify(user_id, shot.getvalue(), with_reason=True)
         if ok:
+            user = execute_query("SELECT * FROM users WHERE id = %s", (user_id,))
+            if not user:
+                st.session_state.pop("pending_2fa_user", None)
+                st.session_state.login_error = "Akun tidak ditemukan. Silakan login ulang."
+                st.rerun()
+            session.reset_face_failures(user_id)
             st.session_state.pop("pending_2fa_user", None)
             blockchain.add_block({"event": "LOGIN", "user": user["username"], "method": "password+face",
                                   "face_score": round(score, 3)})
-            on_success(user, biometric_ok=True)
+            on_success(user, session.AMR_FACE)
             return
-        attempts += 1
-        st.session_state.face_attempts = attempts
-        if attempts >= MAX_FACE_ATTEMPTS:
+        if reason in ("no_face", "bad_image"):
+            # Foto tanpa wajah bukan percobaan pencocokan -> tidak mengurangi jatah; kamera direset.
+            st.session_state.face_retry = retry + 1
+            st.session_state.login_error = f"{msg} (tidak dihitung sebagai percobaan gagal)"
+        elif reason in ("corrupt", "no_data"):
             st.session_state.pop("pending_2fa_user", None)
-            blockchain.add_block({"event": "LOGIN_FAILED_BIOMETRIC", "user": user["username"], "attempts": attempts})
-            st.session_state.login_error = "❌ Verifikasi wajah gagal 3 kali. Silakan login ulang."
+            st.session_state.login_error = f"{msg} Silakan login ulang."
         else:
-            st.session_state.login_error = f"{msg} Sisa percobaan: {MAX_FACE_ATTEMPTS - attempts}."
+            attempts, locked = session.register_face_failure(user_id)
+            if locked:
+                st.session_state.pop("pending_2fa_user", None)
+                blockchain.add_block({"event": "LOGIN_FAILED_BIOMETRIC", "user": pending["username"],
+                                      "attempts": attempts, "locked_minutes": session.FACE_LOCK_MINUTES})
+                st.session_state.login_error = (f"❌ Verifikasi wajah gagal {attempts} kali. Akun dikunci "
+                                                f"{session.FACE_LOCK_MINUTES} menit.")
+            else:
+                st.session_state.login_error = (f"{msg} Sisa percobaan: "
+                                                f"{session.FACE_MAX_ATTEMPTS - attempts}.")
         st.rerun()
     if st.session_state.get("login_error"):
         st.error(st.session_state.pop("login_error"))

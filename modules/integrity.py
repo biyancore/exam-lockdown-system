@@ -117,6 +117,25 @@ def audit():
         results.append({"key": key, "kind": kind, "id": asset_id, "label": label, "status": status,
                         "current": current, "recorded": rec["hash"] if rec else None,
                         "block": rec["block"] if rec else None, "event": rec["event"] if rec else None})
+
+    # Template wajah yang DIHAPUS langsung di database (NULL lewat phpMyAdmin) mematikan Face ID akun itu
+    # tanpa jejak, karena asetnya tidak lagi muncul di daftar di atas. Blok terakhir di blockchain masih
+    # mencatat hash template -> tandai sebagai manipulasi. (Hapus lewat aplikasi mencatat hash None.)
+    seen = {r["key"] for r in results}
+    for key, rec in ledger.items():
+        if not key.startswith("biometric:") or key in seen or rec["hash"] is None:
+            continue
+        try:
+            user_id = int(key.split(":", 1)[1])
+        except ValueError:
+            continue
+        user = execute_query("SELECT username FROM users WHERE id = %s", (user_id,))
+        if not user:
+            continue
+        results.append({"key": key, "kind": "biometric", "id": user_id,
+                        "label": f"Wajah {user['username']} (template hilang dari database)",
+                        "status": "tampered", "current": None, "recorded": rec["hash"],
+                        "block": rec["block"], "event": rec["event"]})
     return results
 
 

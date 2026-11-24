@@ -1,4 +1,4 @@
-streamlit>=1.37
+streamlit>=1.50
 mysql-connector-python
 cryptography>=41
 opencv-python>=4.8,<5

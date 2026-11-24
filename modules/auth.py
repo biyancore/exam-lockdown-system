@@ -62,13 +62,19 @@ def candidate_roots():
             if kernel32.GetDriveTypeW(ctypes.c_wchar_p(root)) in (2, 3):  # REMOVABLE / FIXED (USB HDD)
                 roots.append(root)
     else:
+        def safe_listdir(path):
+            try:
+                return os.listdir(path)
+            except OSError:  # folder tanpa izin baca / perangkat dilepas saat dipindai
+                return []
+
         for base in ("/Volumes", "/media", "/run/media", "/mnt"):
             if os.path.isdir(base):
-                for name in os.listdir(base):
+                for name in safe_listdir(base):
                     path = os.path.join(base, name)
                     roots.append(path)
                     if os.path.isdir(path) and base != "/Volumes":
-                        roots += [os.path.join(path, sub) for sub in os.listdir(path)]
+                        roots += [os.path.join(path, sub) for sub in safe_listdir(path)]
     extra = os.environ.get("SRIKANDI_DONGLE_PATHS")
     if extra:
         roots = extra.split(os.pathsep) + roots

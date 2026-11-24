@@ -1,12 +1,15 @@
-import base64
-import hashlib
-import hmac
 import os
-import secrets
-import time
+import sys
+
+# Semua path (config/master.key, assets/, utils/style.css) relatif terhadap folder proyek.
+# Tanpa ini, menjalankan `streamlit run` dari folder lain membuat master.key/session.key BARU
+# di folder yang salah -> dongle ditolak & seluruh data terenkripsi (termasuk template wajah) gagal dibuka.
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+os.chdir(BASE_DIR)
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="SRIKANDI - Secure Exam System",
@@ -17,24 +20,16 @@ st.set_page_config(
 
 from modules.auth import check_dongle
 from modules.blockchain import SimpleBlockchain
-from modules.database import ensure_schema, execute_query
+from modules.database import ensure_schema, execute_query, get_db_connection, get_last_error
 from modules.migrations import run_migrations
-from modules import biometric
+from modules import biometric, session
 from modules.messages import unread_count
 from modules.token_policy import window_state
 from ui import blockchain_page, kelola, login, messages_page, profile, student
 from ui.common import render_header
 
-# Paksa tampilkan kembali header dan tombol toggle sidebar Streamlit
-components.html("""
-<script>
-    const targetDoc = window.parent.document;
-    const header = targetDoc.querySelector('[data-testid="stHeader"]');
-    if (header) { header.style.display = 'flex'; header.style.visibility = 'visible'; }
-    const collapseBtn = targetDoc.querySelector('[data-testid="collapsedControl"]');
-    if (collapseBtn) { collapseBtn.style.display = 'block'; collapseBtn.style.visibility = 'visible'; }
-</script>
-""", height=0)
+# (Header & tombol sidebar kini cukup diatur lewat utils/style.css; skrip components.html lama
+#  dihapus karena API tersebut sudah deprecated dan akan dihapus dari Streamlit.)
 
 if os.path.exists("utils/style.css"):
     with open("utils/style.css", encoding="utf-8") as f:
@@ -47,50 +42,37 @@ if not dongle_ok:
     st.info("Cara membuat dongle: colokkan flashdisk, lalu jalankan `python buat_dongle.py` di folder proyek.")
     st.stop()
 
-ensure_schema()
-blockchain = SimpleBlockchain()
+# ==================== 2. DATABASE ====================
+_probe = get_db_connection()
+if _probe is None:
+    st.error(f"🛑 **Tidak bisa terhubung ke MySQL/MariaDB**: {get_last_error()}")
+    st.info("Pastikan MySQL di XAMPP sudah **Start** dan database `secure_exam_db` sudah dibuat / diimpor.")
+    st.stop()
+_probe.close()
+
 if "migrations_done" not in st.session_state:
+    ensure_schema()             # cukup sekali per sesi (dulu dijalankan di SETIAP klik -> lambat)
+    blockchain = SimpleBlockchain()
     run_migrations(blockchain)  # enkripsi data lama yang masih plaintext + baseline blockchain
     st.session_state.migrations_done = True
+else:
+    blockchain = SimpleBlockchain()
 
-# ==================== SESI (token bertanda tangan HMAC-SHA256) ====================
-SESSION_PARAM = "exam_session"
+# ==================== SESI (token bertanda tangan HMAC-SHA256, lihat modules/session.py) ====================
+SESSION_PARAM = session.SESSION_PARAM
 MENU_PARAM = "exam_page"
-SECRET_PATH = os.path.join("config", "session.key")
-os.makedirs("config", exist_ok=True)
-if not os.path.exists(SECRET_PATH):
-    with open(SECRET_PATH, "wb") as secret_file:
-        secret_file.write(secrets.token_bytes(32))
-with open(SECRET_PATH, "rb") as secret_file:
-    SESSION_SECRET = secret_file.read()
-
-
-def signed_session(username):
-    expires = int(time.time()) + 60 * 60 * 24 * 7
-    payload = f"{username}|{expires}"
-    signature = hmac.new(SESSION_SECRET, payload.encode(), hashlib.sha256).hexdigest()
-    return base64.urlsafe_b64encode(f"{payload}|{signature}".encode()).decode()
-
-
-def restore_session():
-    try:
-        token = st.query_params.get(SESSION_PARAM)
-        if not token:
-            return None
-        payload = base64.urlsafe_b64decode(token.encode()).decode()
-        username, expires, signature = payload.rsplit("|", 2)
-        expected = hmac.new(SESSION_SECRET, f"{username}|{expires}".encode(), hashlib.sha256).hexdigest()
-        if int(expires) < int(time.time()) or not hmac.compare_digest(signature, expected):
-            return None
-        return execute_query("SELECT * FROM users WHERE username = %s", (username,))
-    except (ValueError, TypeError, UnicodeDecodeError):
-        return None
-
 
 if "logged_in" not in st.session_state:
-    restored_user = restore_session()
+    restored_user, amr = session.restore_token(st.query_params.get(SESSION_PARAM))
+    if restored_user and amr != session.AMR_FACE and biometric.is_enrolled(restored_user["id"]):
+        # Token dibuat sebelum Face ID aktif (login password saja). Dulu token ini langsung masuk
+        # tanpa wajah (bypass Face ID lewat URL lama) -> sekarang diarahkan ke langkah verifikasi wajah.
+        login.start_face_step(restored_user, blockchain)
+        restored_user = None
+        st.query_params.pop(SESSION_PARAM, None)
     st.session_state.logged_in = restored_user is not None
     st.session_state.user = restored_user
+    st.session_state.auth_amr = amr if restored_user else None
     st.session_state.active_exam = None
     st.session_state.current_question_idx = 0
     st.session_state.student_answers = {}
@@ -98,10 +80,11 @@ if "logged_in" not in st.session_state:
     st.session_state.token_target_exam_id = None
 
 
-def on_login_success(user, biometric_ok):
+def on_login_success(user, amr):
     st.session_state.logged_in = True
     st.session_state.user = user
-    st.query_params[SESSION_PARAM] = signed_session(user["username"])
+    st.session_state.auth_amr = amr
+    st.query_params[SESSION_PARAM] = session.issue_token(user, amr)
     st.rerun()
 
 
@@ -157,6 +140,7 @@ with st.sidebar:
 
     if page == "logout":
         blockchain.add_block({"event": "LOGOUT", "user": current_user["username"]})
+        session.revoke_all(current_user["id"])  # salinan URL sesi lama tidak bisa dipakai lagi
         for key in list(st.session_state.keys()):
             if key != "migrations_done":
                 del st.session_state[key]
@@ -165,16 +149,20 @@ with st.sidebar:
 
 
 # ==================== DASHBOARD ====================
+def _count(sql):
+    row = execute_query(sql)
+    return int(row["n"]) if row else 0
+
+
 def security_checklist():
     """Status penerapan 7 ketentuan proyek (dihitung langsung dari sistem)."""
     chain_ok, _ = blockchain.validate_chain()
-    enrolled = execute_query("SELECT COUNT(*) AS n FROM users WHERE biometric_template IS NOT NULL")["n"]
-    n_q = execute_query("SELECT COUNT(*) AS n FROM exam_questions")["n"]
-    n_files = execute_query("SELECT COUNT(*) AS n FROM exam_files WHERE encrypted_file IS NOT NULL")["n"]
-    n_stego = execute_query("SELECT COUNT(*) AS n FROM exam_stego_tokens")["n"]
-    n_blocks = execute_query("SELECT COUNT(*) AS n FROM blockchain_logs")["n"]
-    plain_tokens = execute_query(
-        "SELECT COUNT(*) AS n FROM exams WHERE token_hash <> 'PDF_MODE' AND token_hash NOT LIKE 'pbkdf2_sha256$%%'")["n"]
+    enrolled = _count("SELECT COUNT(*) AS n FROM users WHERE biometric_template IS NOT NULL")
+    n_q = _count("SELECT COUNT(*) AS n FROM exam_questions")
+    n_files = _count("SELECT COUNT(*) AS n FROM exam_files WHERE encrypted_file IS NOT NULL")
+    n_stego = _count("SELECT COUNT(*) AS n FROM exam_stego_tokens")
+    n_blocks = _count("SELECT COUNT(*) AS n FROM blockchain_logs")
+    plain_tokens = _count("SELECT COUNT(*) AS n FROM exams WHERE token_hash <> 'PDF_MODE' AND token_hash NOT LIKE 'pbkdf2_sha256$%%'")
     rows = [
         ("Login biometrik & hanya hidup dengan dongle", True,
          f"Dongle Ed25519 aktif · {enrolled} pengguna terdaftar Face ID (LBPH)"),

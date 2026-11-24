@@ -144,7 +144,7 @@ def render_pdf_card(ex):
             else:
                 key_in = st.text_input("Masukkan Kunci Dosen untuk Unduh PDF", type="password",
                                        key=f"pdf_key_{ex['id']}", autocomplete="new-password")
-            unlock = st.form_submit_button("🔓 Buka Kunci PDF", use_container_width=True)
+            unlock = st.form_submit_button("🔓 Buka Kunci PDF", width="stretch")
         if unlock:
             if stego:
                 data, result = (None, "⚠️ Unggah gambar token terlebih dahulu!") if not img else \
@@ -164,7 +164,7 @@ def render_pdf_card(ex):
                 st.caption(note)
             st.download_button("💾 Simpan PDF Asli", data=st.session_state[plain_key],
                                file_name=f"{ex['exam_code']}_Soal.pdf", mime="application/pdf",
-                               key=f"save_real_{ex['id']}", use_container_width=True)
+                               key=f"save_real_{ex['id']}", width="stretch")
 
     # ---------- ciphertext ----------
     render_ciphertext_box(ex, file_rec)
@@ -208,7 +208,7 @@ def render_ciphertext_box(ex, file_rec):
         st.code(hexdump(info["preview"]), language="text")
     st.download_button("🔒 Download File Ciphertext (.enc)", data=enc_bytes,
                        file_name=f"{ex['exam_code']}_encrypted.enc", mime="application/octet-stream",
-                       key=f"save_cipher_{ex['id']}", use_container_width=True)
+                       key=f"save_cipher_{ex['id']}", width="stretch")
 
 
 # ============================================================================= PG card
@@ -219,7 +219,7 @@ def render_pg_card(ex, sub):
         st.markdown(f"""<div style='background-color: #dcfce7; border: 1px solid #bbf7d0; padding: 6px 10px; border-radius: 6px;
             font-size: 13px; color: #166534; font-weight: 600; margin-bottom: 10px;'>✅ Selesai (Nilai: {sub['score']})</div>""",
                     unsafe_allow_html=True)
-        st.button("Sudah Dikerjakan", key=f"done_{ex['id']}", disabled=True, use_container_width=True)
+        st.button("Sudah Dikerjakan", key=f"done_{ex['id']}", disabled=True, width="stretch")
         return
     st.markdown("""<div style='background-color: #fef9c3; border: 1px solid #fef08a; padding: 6px 10px; border-radius: 6px;
         font-size: 13px; color: #854d0e; font-weight: 600; margin-bottom: 10px;'>⚠️ Belum Dikerjakan</div>""",
@@ -229,7 +229,7 @@ def render_pg_card(ex, sub):
     st.caption(line + (" · 🖼️ Token berupa gambar steganografi" if stego else " · 🔤 Token teks"))
 
     if st.session_state.get("token_target_exam_id") != ex["id"]:
-        if st.button("Mulai Ujian PG →", key=f"start_{ex['id']}", use_container_width=True, disabled=state != "open"):
+        if st.button("Mulai Ujian PG →", key=f"start_{ex['id']}", width="stretch", disabled=state != "open"):
             st.session_state.token_target_exam_id = ex["id"]
             st.rerun()
         if state != "open":
@@ -242,7 +242,7 @@ def render_pg_card(ex, sub):
     else:
         tok = st.text_input("Token Dosen", key=f"tok_{ex['id']}", placeholder="Masukkan token...")
     bx1, bx2 = st.columns(2)
-    if bx1.button("Submit", key=f"verify_{ex['id']}", type="primary", use_container_width=True):
+    if bx1.button("Submit", key=f"verify_{ex['id']}", type="primary", width="stretch"):
         if stego:
             ok, result = (False, "⚠️ Unggah gambar token terlebih dahulu!") if not img else \
                 verify_stego_token(ex, img.getvalue())[:2]
@@ -266,7 +266,7 @@ def render_pg_card(ex, sub):
                 st.rerun()
             except Exception as e:
                 st.error(f"Error dekripsi: {e}")
-    if bx2.button("Batal", key=f"cancel_{ex['id']}", use_container_width=True):
+    if bx2.button("Batal", key=f"cancel_{ex['id']}", width="stretch"):
         st.session_state.token_target_exam_id = None
         st.rerun()
 
@@ -286,7 +286,9 @@ def render_active_exam(current_user, blockchain):
         nav_cols = st.columns(5)
         for i in range(len(questions)):
             with nav_cols[i % 5]:
-                if st.button(str(i + 1), key=f"nav_{i}", use_container_width=True):
+                done = st.session_state.student_answers.get(i) is not None
+                if st.button(f"{i + 1}{' ✓' if done else ''}", key=f"nav_{i}", width="stretch",
+                             type="primary" if i == q_idx else "secondary"):
                     st.session_state.current_question_idx = i
                     st.rerun()
         st.markdown("---")
@@ -301,19 +303,23 @@ def render_active_exam(current_user, blockchain):
             st.markdown(f"**{q_data['question']}**")
         current_ans = st.session_state.student_answers.get(q_idx, None)
         opts = ["A", "B", "C", "D"]
-        default_idx = opts.index(current_ans) if current_ans in opts else 0
+        # index=None: soal yang hanya dilihat TIDAK otomatis terjawab "A" (dulu default index 0).
+        default_idx = opts.index(current_ans) if current_ans in opts else None
         selected = st.radio("Pilih jawaban:", opts, format_func=lambda x: f"{x}. {q_data['options'][x]}",
-                            index=default_idx, key=f"radio_{q_idx}")
-        st.session_state.student_answers[q_idx] = selected
+                            index=default_idx, key=f"radio_{ex_info['id']}_{q_idx}")
+        if selected is not None:
+            st.session_state.student_answers[q_idx] = selected
+        answered = sum(1 for i in range(len(questions)) if st.session_state.student_answers.get(i) in opts)
+        st.caption(f"Terjawab {answered} dari {len(questions)} soal.")
 
         c1, c2, c3 = st.columns([1, 1, 2])
-        if q_idx > 0 and c1.button("← Sebelumnya", use_container_width=True):
+        if q_idx > 0 and c1.button("← Sebelumnya", width="stretch"):
             st.session_state.current_question_idx -= 1
             st.rerun()
-        if q_idx < len(questions) - 1 and c2.button("Selanjutnya →", use_container_width=True):
+        if q_idx < len(questions) - 1 and c2.button("Selanjutnya →", width="stretch"):
             st.session_state.current_question_idx += 1
             st.rerun()
-        if q_idx == len(questions) - 1 and c3.button("🚀 SUBMIT UJIAN", type="primary", use_container_width=True):
+        if q_idx == len(questions) - 1 and c3.button("🚀 SUBMIT UJIAN", type="primary", width="stretch"):
             ans_key = active["answer_key"]
             correct = sum(1 for k, v in ans_key.items() if st.session_state.student_answers.get(int(k)) == v)
             score = round((correct / len(questions)) * 100, 2)

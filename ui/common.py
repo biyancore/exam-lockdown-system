@@ -105,8 +105,8 @@ def image_compare(cover_png, stego_png, metrics=None, extra_caption=""):
     cover, stego = load_rgb(cover_png), load_rgb(stego_png)
     metrics = metrics or image_metrics(cover, stego)
     c1, c2 = st.columns(2)
-    c1.image(cover_png, caption="Gambar sampul (asli)", use_container_width=True)
-    c2.image(stego_png, caption="Gambar token (stego) — terlihat sama", use_container_width=True)
+    c1.image(cover_png, caption="Gambar sampul (asli)", width="stretch")
+    c2.image(stego_png, caption="Gambar token (stego) — terlihat sama", width="stretch")
     psnr = "∞" if metrics["psnr"] == float("inf") else f"{metrics['psnr']:.2f} dB"
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("PSNR", psnr, help="> 40 dB berarti perbedaan tidak terlihat oleh mata")
@@ -119,6 +119,6 @@ def image_compare(cover_png, stego_png, metrics=None, extra_caption=""):
     st.caption("Hash berbeda → isi file berbeda, walau secara kasat mata sama. " + extra_caption)
     with st.expander("🔬 Lihat analisis bit (LSB plane & peta perubahan)"):
         a, b, c = st.columns(3)
-        a.image(lsb_plane(cover), caption="Bidang LSB sampul", use_container_width=True)
-        b.image(lsb_plane(stego), caption="Bidang LSB stego (pola data di kiri atas)", use_container_width=True)
-        c.image(diff_map(cover, stego), caption="Piksel yang berubah (merah)", use_container_width=True)
+        a.image(lsb_plane(cover), caption="Bidang LSB sampul", width="stretch")
+        b.image(lsb_plane(stego), caption="Bidang LSB stego (pola data di kiri atas)", width="stretch")
+        c.image(diff_map(cover, stego), caption="Piksel yang berubah (merah)", width="stretch")

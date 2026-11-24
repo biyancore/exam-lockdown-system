@@ -118,9 +118,20 @@ def ensure_schema():
         except Error as e:
             print(f"[ensure_schema] {e}")
 
+    def add_column(table, column, definition):
+        """Pengganti `ADD COLUMN IF NOT EXISTS` (sintaks khusus MariaDB). Di MySQL 8 sintaks itu
+        error, sehingga kolom seperti users.biometric_template tidak pernah dibuat."""
+        try:
+            if column in _existing_columns(cursor, table):
+                return
+        except Error as e:
+            print(f"[ensure_schema] {e}")
+            return
+        run(f"ALTER TABLE `{table}` ADD COLUMN `{column}` {definition}")
+
     # --- Kolom tambahan tabel exams ---
-    run("ALTER TABLE exams ADD COLUMN IF NOT EXISTS duration_minutes INT DEFAULT 90")
-    run("ALTER TABLE exams ADD COLUMN IF NOT EXISTS token_hash VARCHAR(255) DEFAULT NULL")
+    add_column("exams", "duration_minutes", "INT DEFAULT 90")
+    add_column("exams", "token_hash", "VARCHAR(255) DEFAULT NULL")
 
     # --- Tabel file PDF terenkripsi ---
     run("""
@@ -168,21 +179,28 @@ def ensure_schema():
     """)
 
     # --- Token ujian: jenis token + masa berlaku + token terenkripsi ---
-    run("ALTER TABLE exams ADD COLUMN IF NOT EXISTS token_mode VARCHAR(10) NOT NULL DEFAULT 'text'")
-    run("ALTER TABLE exams ADD COLUMN IF NOT EXISTS token_encrypted TEXT NULL")
-    run("ALTER TABLE exams ADD COLUMN IF NOT EXISTS token_valid_from DATETIME NULL")
-    run("ALTER TABLE exams ADD COLUMN IF NOT EXISTS token_valid_until DATETIME NULL")
+    add_column("exams", "token_mode", "VARCHAR(10) NOT NULL DEFAULT 'text'")
+    add_column("exams", "token_encrypted", "TEXT NULL")
+    add_column("exams", "token_valid_from", "DATETIME NULL")
+    add_column("exams", "token_valid_until", "DATETIME NULL")
 
     # --- Metadata file PDF (nama, ukuran, hash SHA-256 isi asli, KDF) ---
-    run("ALTER TABLE exam_files ADD COLUMN IF NOT EXISTS file_name VARCHAR(255) NULL")
-    run("ALTER TABLE exam_files ADD COLUMN IF NOT EXISTS file_size INT NULL")
-    run("ALTER TABLE exam_files ADD COLUMN IF NOT EXISTS file_sha256 CHAR(64) NULL")
-    run("ALTER TABLE exam_files ADD COLUMN IF NOT EXISTS kdf VARCHAR(60) NULL")
-    run("ALTER TABLE exam_files MODIFY file_key TEXT NULL")  # kunci kini disimpan terenkripsi
+    add_column("exam_files", "file_name", "VARCHAR(255) NULL")
+    add_column("exam_files", "file_size", "INT NULL")
+    add_column("exam_files", "file_sha256", "CHAR(64) NULL")
+    add_column("exam_files", "kdf", "VARCHAR(60) NULL")
+    try:  # kunci kini disimpan terenkripsi (lebih panjang dari VARCHAR(255))
+        cursor.execute("SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() "
+                       "AND TABLE_NAME = 'exam_files' AND COLUMN_NAME = 'file_key'")
+        row = cursor.fetchone()
+        if row and str(row[0]).lower() != "text":
+            run("ALTER TABLE exam_files MODIFY file_key TEXT NULL")
+    except Error as e:
+        print(f"[ensure_schema] {e}")
 
     # --- Biometrik wajah: template terenkripsi AES ---
-    run("ALTER TABLE users ADD COLUMN IF NOT EXISTS biometric_template LONGTEXT NULL")
-    run("ALTER TABLE users ADD COLUMN IF NOT EXISTS biometric_updated_at DATETIME NULL")
+    add_column("users", "biometric_template", "LONGTEXT NULL")
+    add_column("users", "biometric_updated_at", "DATETIME NULL")
 
     # --- Token gambar steganografi (satu baris = satu gambar token) ---
     run("""

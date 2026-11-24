@@ -131,8 +131,8 @@ def render_pg_editor(current_user, blockchain):
             f"database (tabel `exam_questions`). Ubah soal yang perlu lalu simpan; soal lain tetap aman."
         )
         nb1, nb2, _ = st.columns([1, 1, 2])
-        nb1.button("⬅️ Kembali ke Daftar", on_click=go_to_exam_list, use_container_width=True)
-        nb2.button("➕ Buat Ujian Baru", on_click=start_new_pg, use_container_width=True)
+        nb1.button("⬅️ Kembali ke Daftar", on_click=go_to_exam_list, width="stretch")
+        nb2.button("➕ Buat Ujian Baru", on_click=start_new_pg, width="stretch")
 
     st.markdown("### 📋 Informasi Dasar Ujian PG")
     c1, c2 = st.columns(2)
@@ -314,11 +314,11 @@ def render_exam_list(current_user, blockchain):
                        f"Jumlah soal: {count_questions(ex['id'])}")
             st.caption(_token_caption(ex))
             c1, c2, c3 = st.columns(3)
-            c1.button("✏️ Edit PG", key=f"edit_pg_{ex['id']}", use_container_width=True,
+            c1.button("✏️ Edit PG", key=f"edit_pg_{ex['id']}", width="stretch",
                       on_click=start_edit_pg, args=(ex["id"],))
-            c2.button("🖼️ Token Gambar", key=f"stego_pg_{ex['id']}", use_container_width=True,
+            c2.button("🖼️ Token Gambar", key=f"stego_pg_{ex['id']}", width="stretch",
                       on_click=open_stego_for, args=(ex["id"],))
-            if c3.button("🗑️ Hapus", key=f"del_pg_{ex['id']}", use_container_width=True):
+            if c3.button("🗑️ Hapus", key=f"del_pg_{ex['id']}", width="stretch"):
                 execute_query("DELETE FROM exams WHERE id = %s", (ex["id"],))
                 if st.session_state.get("editing_exam_id") == ex["id"]:
                     st.session_state.editing_exam_id = None
@@ -344,12 +344,12 @@ def render_exam_list(current_user, blockchain):
                 st.caption("Status File: ⚠️ File Kosong — unggah ulang lewat ✏️ Edit PDF")
             st.caption(_token_caption(ex))
             c1, c2, c3 = st.columns(3)
-            if c1.button("✏️ Edit PDF", key=f"edit_pdf_{ex['id']}", use_container_width=True):
+            if c1.button("✏️ Edit PDF", key=f"edit_pdf_{ex['id']}", width="stretch"):
                 st.session_state.editing_pdf_id = ex["id"]
                 st.rerun()
-            c2.button("🖼️ Token Gambar", key=f"stego_pdf_{ex['id']}", use_container_width=True,
+            c2.button("🖼️ Token Gambar", key=f"stego_pdf_{ex['id']}", width="stretch",
                       on_click=open_stego_for, args=(ex["id"],))
-            if c3.button("🗑️ Hapus PDF", key=f"del_pdf_{ex['id']}", use_container_width=True):
+            if c3.button("🗑️ Hapus PDF", key=f"del_pdf_{ex['id']}", width="stretch"):
                 execute_query("DELETE FROM exams WHERE id = %s", (ex["id"],))
                 blockchain.add_block({"event": "DELETE_PDF_EXAM", "exam_id": ex["id"], "asset": f"exam_file:{ex['id']}",
                                       "asset_hash": None, "user": current_user["username"]})
@@ -386,8 +386,8 @@ def render_pdf_edit(current_user, blockchain):
         use_v, v_start, v_end = validity_editor(pfx, data.get("token_valid_from"), data.get("token_valid_until"),
                                                 in_form=True)
         b_save, b_cancel = st.columns(2)
-        save_pdf = b_save.form_submit_button("💾 Simpan Perubahan PDF", type="primary", use_container_width=True)
-        cancel_pdf = b_cancel.form_submit_button("❌ Batal", use_container_width=True)
+        save_pdf = b_save.form_submit_button("💾 Simpan Perubahan PDF", type="primary", width="stretch")
+        cancel_pdf = b_cancel.form_submit_button("❌ Batal", width="stretch")
 
     if cancel_pdf:
         st.session_state.editing_pdf_id = None
@@ -643,7 +643,7 @@ def render_stego_tab(current_user, blockchain):
                 except Exception:
                     cover_png = stego_png = None
                 if stego_png:
-                    c_img.image(stego_png, use_container_width=True)
+                    c_img.image(stego_png, width="stretch")
                 status = "🟢 Aktif" if t["is_active"] else f"🔴 Dicabut ({fmt_dt(t['revoked_at'])})"
                 c_info.markdown(f"**{t['label']}** · {status}")
                 c_info.caption(f"ID token: `{t['token_uid']}` · Dibuat: {t['created_at']} · "
@@ -654,19 +654,19 @@ def render_stego_tab(current_user, blockchain):
                 if stego_png:
                     b1.download_button("⬇️ Unduh PNG", data=stego_png, mime="image/png",
                                        file_name=f"TOKEN_{exam['exam_code']}_{t['token_uid'][:8]}.png",
-                                       key=f"stg_dl_{t['id']}", use_container_width=True)
+                                       key=f"stg_dl_{t['id']}", width="stretch")
                 if t["is_active"]:
-                    if b2.button("⛔ Cabut", key=f"stg_rev_{t['id']}", use_container_width=True):
+                    if b2.button("⛔ Cabut", key=f"stg_rev_{t['id']}", width="stretch"):
                         set_active(t["id"], False)
                         record(blockchain, "REVOKE_STEGO_TOKEN", "stego", t["id"], editor=current_user["username"])
                         flash(f"⛔ Token '{t['label']}' dicabut. Gambar ini tidak bisa dipakai lagi.")
                         st.rerun()
-                elif b2.button("♻️ Aktifkan", key=f"stg_act_{t['id']}", use_container_width=True):
+                elif b2.button("♻️ Aktifkan", key=f"stg_act_{t['id']}", width="stretch"):
                     set_active(t["id"], True)
                     record(blockchain, "ACTIVATE_STEGO_TOKEN", "stego", t["id"], editor=current_user["username"])
                     flash(f"♻️ Token '{t['label']}' diaktifkan kembali.")
                     st.rerun()
-                if b3.button("🗑️ Hapus", key=f"stg_del_{t['id']}", use_container_width=True):
+                if b3.button("🗑️ Hapus", key=f"stg_del_{t['id']}", width="stretch"):
                     delete_token(t["id"])
                     blockchain.add_block({"event": "DELETE_STEGO_TOKEN", "asset": f"stego:{t['id']}",
                                           "asset_hash": None, "editor": current_user["username"]})
